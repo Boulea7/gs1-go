@@ -91,12 +91,16 @@ type Barcode struct {
 
 // ParseOptions controls ambiguous carrier handling and optional validation.
 // AssumeBareGTIN8 takes precedence over AI interpretation for unprefixed
-// eight-digit numeric input; parsing does not validate the GTIN check digit.
+// eight-digit numeric input. GTIN check-digit validation is opt-in.
 type ParseOptions struct {
 	// AssumeBareGTIN8 treats an unprefixed eight-digit numeric input as GTIN-8.
 	AssumeBareGTIN8 bool
 	// ValidateAssociations enforces AI association rules after parsing.
 	ValidateAssociations bool
+	// ValidateCheckDigits checks GTIN check digits for AI 01 and AI 02,
+	// including bare GTINs and EAN/UPC and ITF-14 carrier payloads.
+	// It is independent of ValidateAssociations and is disabled by default.
+	ValidateCheckDigits bool
 }
 
 // GTIN returns the GTIN value (AI 01), or "" if not present.
@@ -238,7 +242,7 @@ func Parse(input string) (Barcode, error) {
 }
 
 // ParseWithOptions parses a GS1 barcode with explicit ambiguity options and
-// optional AI association rules.
+// optional AI association and GTIN check-digit validation.
 func ParseWithOptions(input string, opts ParseOptions) (Barcode, error) {
 	b := Barcode{Elements: make([]Element, 0, 8)}
 	if err := ParseIntoWithOptions(input, &b, opts); err != nil {
@@ -255,8 +259,11 @@ func ParseInto(input string, b *Barcode) error {
 }
 
 // ParseIntoWithOptions parses into an existing Barcode with explicit
-// ambiguity options and optional AI association validation, reusing its
-// allocated memory.
+// ambiguity options and optional semantic validation, reusing its allocated
+// memory. Syntax, length, and data-type errors precede semantic errors;
+// association errors precede check-digit errors when both are enabled.
+// Check-digit error positions identify AI starts or carrier-payload starts
+// in the normalized input, after scanner cleaning and bracket conversion.
 func ParseIntoWithOptions(input string, b *Barcode, opts ParseOptions) error {
 	if strings.TrimSpace(input) == "" {
 		return ErrEmptyInput
@@ -270,41 +277,26 @@ func ParseIntoWithOptions(input string, b *Barcode, opts ParseOptions) error {
 	// Detect bare GTIN (EAN-13, EAN-8, UPC-A, GTIN-14 without AI prefix).
 	if isBareGTIN(data, opts.AssumeBareGTIN8) {
 		padded := padGTIN(data)
-		b.Elements = append(b.Elements, Element{AI: "01", Value: padded})
+		element := Element{AI: "01", Value: padded}
+		b.Elements = append(b.Elements, element)
+		if opts.ValidateCheckDigits {
+			if err := validateElementCheckDigit(element); err != nil {
+				return fmt.Errorf("at position 0: %w", err)
+			}
+		}
 		return nil
 	}
 
 	pos, sym, aimCode := skipPrefix(data)
 	b.Symbology = sym
-	if done, err := parseCarrierElement(data, pos, sym, aimCode, b); done || err != nil {
+	if done, err := parseCarrierElement(data, pos, sym, aimCode, b, opts.ValidateCheckDigits); done || err != nil {
 		return err
 	}
 
-	for pos < len(data) {
-		if data[pos] == byte(fnc1) {
-			pos++
-			continue
-		}
-
-		spec, aiLen, ok := lookupAIAt(data, pos)
-		if !ok {
-			return fmt.Errorf("%w: at position %d", ErrUnknownAI, pos)
-		}
-		pos += aiLen
-
-		value, newPos, err := extractData(data, pos, spec)
-		if err != nil {
-			return err
-		}
-		pos = newPos
-
-		if err := validateData(value, spec); err != nil {
-			return err
-		}
-
-		b.Elements = append(b.Elements, Element{AI: spec.AI, Value: value})
+	checkDigitErr, err := parseAIElements(data, pos, b, opts.ValidateCheckDigits)
+	if err != nil {
+		return err
 	}
-
 	if len(b.Elements) == 0 {
 		return ErrEmptyInput
 	}
@@ -314,15 +306,74 @@ func ParseIntoWithOptions(input string, b *Barcode, opts ParseOptions) error {
 		}
 	}
 	if opts.ValidateAssociations {
-		return b.ValidateAssociations()
+		if err := b.ValidateAssociations(); err != nil {
+			return err
+		}
 	}
+	return checkDigitErr
+}
 
-	return nil
+// parseAIElements defers the first check-digit error so all structure and
+// association checks can take precedence without storing element offsets.
+func parseAIElements(data string, pos int, b *Barcode, checkDigits bool) (checkDigitErr, parseErr error) {
+	for pos < len(data) {
+		if data[pos] == byte(fnc1) {
+			pos++
+			continue
+		}
+
+		aiStart := pos
+		spec, aiLen, ok := lookupAIAt(data, pos)
+		if !ok {
+			return nil, fmt.Errorf("%w: at position %d", ErrUnknownAI, pos)
+		}
+		pos += aiLen
+
+		value, newPos, err := extractData(data, pos, spec)
+		if err != nil {
+			return nil, err
+		}
+		pos = newPos
+
+		if err := validateData(value, spec); err != nil {
+			return nil, err
+		}
+
+		element := Element{AI: spec.AI, Value: value}
+		b.Elements = append(b.Elements, element)
+		if checkDigits && checkDigitErr == nil {
+			if err := validateElementCheckDigit(element); err != nil {
+				checkDigitErr = fmt.Errorf("at position %d: %w", aiStart, err)
+			}
+		}
+	}
+	return checkDigitErr, nil
 }
 
 // Validate is the umbrella for all semantic Application Identifier checks,
-// including association rules.
-func (b Barcode) Validate() error { return b.ValidateAssociations() }
+// including association rules and GTIN check digits for AI 01 and AI 02.
+// It checks the current Elements without reparsing Raw. Association errors
+// take precedence over check-digit errors.
+func (b Barcode) Validate() error {
+	if err := b.ValidateAssociations(); err != nil {
+		return err
+	}
+	for _, element := range b.Elements {
+		if err := validateElementCheckDigit(element); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateElementCheckDigit(element Element) error {
+	if element.AI == "01" || element.AI == "02" {
+		if err := ValidateGTIN(element.Value); err != nil {
+			return fmt.Errorf("AI (%s): %w", element.AI, err)
+		}
+	}
+	return nil
+}
 
 // skipPrefix skips leading FNC1 and AIM symbology identifiers.
 func skipPrefix(data string) (int, Symbology, byte) {
@@ -368,7 +419,7 @@ func isAIMPrefix(code byte) bool {
 	return strings.ContainsRune("CdQeJEIAX", rune(code))
 }
 
-func parseCarrierElement(data string, pos int, sym Symbology, code byte, b *Barcode) (bool, error) {
+func parseCarrierElement(data string, pos int, sym Symbology, code byte, b *Barcode, checkDigits bool) (bool, error) {
 	if sym != SymEANUPC && sym != SymITF14 {
 		return false, nil
 	}
@@ -376,8 +427,25 @@ func parseCarrierElement(data string, pos int, sym Symbology, code byte, b *Barc
 	if err != nil || !ok {
 		return true, err
 	}
+	if checkDigits {
+		if err := validateCarrierCheckDigit(data[pos:], value, sym, code); err != nil {
+			return true, fmt.Errorf("at position %d: AI (01): %w", pos, err)
+		}
+	}
 	b.Elements = append(b.Elements, Element{AI: "01", Value: value})
 	return true, nil
+}
+
+func validateCarrierCheckDigit(payload, gtin string, sym Symbology, code byte) error {
+	// UPC-E expansion recomputes the digit, so check the received digit before
+	// the original payload is discarded. A stripped ITF-14 digit is synthesized.
+	if sym == SymEANUPC && code == '0' && len(payload) == 8 && payload[0] == '0' {
+		expected := gtin[len(gtin)-1]
+		if payload[7] != expected {
+			return fmt.Errorf("%w: expected '%c', got '%c'", ErrInvalidCheckDigit, expected, payload[7])
+		}
+	}
+	return ValidateGTIN(gtin)
 }
 
 func parseCarrierPayload(data string, sym Symbology, code byte) (string, bool, error) {

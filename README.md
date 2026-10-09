@@ -142,13 +142,40 @@ Run `make bench` to reproduce on your hardware.
 
 ### GTIN validation
 
-Parsing checks structure only. Validate check digits explicitly:
+Default parsing does not enforce GTIN check digits. Validate a GTIN explicitly
+or enable check-digit validation while parsing:
 
 ```go
 err := gs1.ValidateGTIN("04150000021126")            // nil
 check, _ := gs1.ComputeGTINCheckDigit("0415000002112") // '6'
 upca, _ := gs1.ExpandUPCE("012345")                    // 12-digit UPC-A
+
+_, err = gs1.ParseWithOptions("0104150000021127",
+    gs1.ParseOptions{ValidateCheckDigits: true})
+// errors.Is(err, gs1.ErrInvalidCheckDigit) == true
 ```
+
+`ValidateCheckDigits` checks AI 01 and AI 02, including bare GTINs and
+EAN/UPC and ITF-14 payloads normalized to AI 01. It is independent of
+`ValidateAssociations`:
+
+| ValidateAssociations | ValidateCheckDigits | Semantic checks |
+|---|---|---|
+| false | false | None (default) |
+| true | false | AI associations |
+| false | true | GTIN check digits for AI 01 and AI 02 |
+| true | true | AI associations, then GTIN check digits |
+
+Syntax, length, and data-type errors take precedence over semantic errors.
+Check-digit errors wrap `ErrInvalidCheckDigit` and identify the AI and its
+start position in the normalized input, after scanner cleaning and bracket
+conversion. Carrier errors identify the normalized payload start.
+
+Existing bare-GTIN/AI-prefix disambiguation is unchanged; bare GTIN-8 still
+requires `AssumeBareGTIN8: true`. For eight-digit UPC-E (`]E0`), the option
+checks the received digit before expansion replaces it. A 13-digit `]I2`
+payload has no received check digit: the parser synthesizes it, so validation
+cannot detect an incorrect digit that the scanner has already removed.
 
 Applications that allocate their own logistics identifiers can build the
 numeric keys without implementing the check-digit algorithm themselves:
@@ -167,10 +194,17 @@ the application's responsibility.
 
 ### Association rules
 
-`Parse` remains lenient for scanner workflows. Use `Barcode.Validate()` or
-`ParseWithOptions` with `ValidateAssociations: true` to enforce required pairs
-and exclusions such as `(02)` with `(37)`, weights with a GTIN, and mutually
-exclusive identifier variants.
+`Parse` remains lenient for scanner workflows. Use `Barcode.ValidateAssociations()`
+or `ParseWithOptions` with `ValidateAssociations: true` to enforce required
+pairs and exclusions such as `(02)` with `(37)`, weights with a GTIN, and
+mutually exclusive identifier variants.
+
+`Barcode.Validate()` runs association checks followed by GTIN check-digit
+checks for AI 01 and AI 02. It uses the current `Elements` without reparsing
+`Raw`; its errors provide AI context without an input position. Lenient
+UPC-E expansion has already replaced the original digit, so post-parse
+validation cannot recover a mismatched digit from that scan. Enable
+`ValidateCheckDigits` while parsing to check it.
 
 The strict association rules currently cover: AI 01 excluding 02 and 37; AI
 02 requiring 37; AI 37 requiring AI 00 with 02 or 8026; AI 21 requiring 01,
@@ -286,6 +320,8 @@ element string as GS1-128.
 ```bash
 gs1 parse "0104150000021126172506302112345ABC"        # text table
 gs1 parse -json -iso "(01)04150000021126(17)250200"   # JSON, ISO dates
+gs1 parse -check-digits "0104150000021126"              # GTIN check digits
+gs1 parse -strict -check-digits "0104150000021126"      # both semantic checks
 gs1 parse -validate anvisa "$SCAN"                     # exit 1 if non-compliant
 cat scans.txt | gs1 parse -json                        # one JSON object per line
 gs1 gtin 04150000021126                                # check digit
@@ -294,12 +330,16 @@ gs1 ai 3102                                            # AI (3102)  Net Weight k
 
 Exit codes: `0` success, `1` invalid input or failed validation, `2` usage error.
 
+`-strict` validates AI associations only. `-check-digits` independently
+enables GTIN check-digit validation for AI 01 and AI 02.
+
 ## WebAssembly
 
 The same parser runs in browsers, Electron and edge runtimes.
 
 ```bash
 make wasm   # produces wasm/gs1.wasm and a servable example under wasm/example/
+node wasm/check-digits.test.mjs  # optional Node runtime validation of that build
 ```
 
 ```html
@@ -308,7 +348,9 @@ make wasm   # produces wasm/gs1.wasm and a servable example under wasm/example/
   import { loadGS1 } from './gs1-loader.js';
   const gs1 = await loadGS1('gs1.wasm');
 
-  const r = gs1.parse("0104150000021126172502001012345", { dateFormat: "iso", dayZero: "first" });
+  const r = gs1.parse("0104150000021126172502001012345", {
+    dateFormat: "iso", dayZero: "first", validateCheckDigits: true
+  });
   r.gtin;            // "04150000021126"
   r.expirationDate;  // "2025-02-01"
   r.warnings;         // parser advisories such as due-date-as-expiry
@@ -320,6 +362,10 @@ make wasm   # produces wasm/gs1.wasm and a servable example under wasm/example/
 
 TypeScript declarations live in [`wasm/gs1.d.ts`](wasm/gs1.d.ts). Design
 notes are in [ADR 0005](docs/adr/0005-webassembly-target.md).
+The WASM `strict` option validates AI associations only; `validateCheckDigits`
+independently checks GTIN check digits and returns the usual `{ error: string }`
+object on failure. The optional Node test uses the matching `wasm_exec.js`
+copied by `make wasm`; Node is not required by `make all`.
 
 ## Scope
 
