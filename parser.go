@@ -253,14 +253,17 @@ func ParseWithOptions(input string, opts ParseOptions) (Barcode, error) {
 
 // ParseInto parses a GS1 barcode string into an existing Barcode, reusing
 // its allocated memory. Call b.Reset() before reuse to clear previous data.
-// Each goroutine must use its own Barcode.
+// On error, the contents of b are unspecified and must not be used as a
+// parsed result. Each goroutine must use its own Barcode.
 func ParseInto(input string, b *Barcode) error {
 	return ParseIntoWithOptions(input, b, ParseOptions{})
 }
 
 // ParseIntoWithOptions parses into an existing Barcode with explicit
 // ambiguity options and optional semantic validation, reusing its allocated
-// memory. Syntax, length, and data-type errors precede semantic errors;
+// memory. Call b.Reset() before reuse to clear previous data. On error,
+// the contents of b are unspecified and must not be used as a parsed result.
+// Syntax, length, and data-type errors precede semantic errors;
 // association errors precede check-digit errors when both are enabled.
 // Check-digit error positions identify AI starts or carrier-payload starts
 // in the normalized input, after scanner cleaning and bracket conversion.
