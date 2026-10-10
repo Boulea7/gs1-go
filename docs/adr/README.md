@@ -15,4 +15,4 @@ supersedes it.
 | [0005](0005-webassembly-target.md) | WebAssembly build target | Accepted |
 | [0006](0006-missing-fnc1-recovery.md) | Missing FNC1 recovery heuristic | Accepted |
 | [0007](0007-date-parsing-options.md) | Configurable day-zero date policy | Accepted |
-| [0008](0008-check-digit-validation.md) | Opt-in GTIN check-digit validation | Proposed |
+| [0008](0008-check-digit-validation.md) | Opt-in GTIN check-digit validation | Accepted |

@@ -1,7 +1,7 @@
 # ADR 0008: Opt-in GTIN check-digit validation
 
 ## Status
-Proposed
+Accepted
 
 ## Date
 2026-10-10
