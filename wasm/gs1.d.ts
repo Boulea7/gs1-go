@@ -48,6 +48,8 @@ export interface GS1ParseError {
 export interface GS1ParseOptions {
   /** Validate Application Identifier association rules. */
   strict?: boolean;
+  /** Validate GTIN check digits for AI 01 and AI 02, independently of strict. */
+  validateCheckDigits?: boolean;
   /**
    * Date output format.
    * - "raw" (default): YYMMDD string as-is from the barcode

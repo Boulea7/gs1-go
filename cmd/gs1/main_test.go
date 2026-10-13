@@ -129,6 +129,82 @@ func TestParseStrictAssociations(t *testing.T) {
 	}
 }
 
+func TestParseIndependentValidationFlags(t *testing.T) {
+	options := []struct {
+		name        string
+		flags       []string
+		strict      bool
+		checkDigits bool
+	}{
+		{name: "lenient"},
+		{name: "strict", flags: []string{"-strict"}, strict: true},
+		{name: "check digits", flags: []string{"-check-digits"}, checkDigits: true},
+		{name: "both", flags: []string{"-strict", "-check-digits"}, strict: true, checkDigits: true},
+	}
+	inputs := []struct {
+		name           string
+		input          string
+		badAssociation bool
+		badCheckDigit  bool
+	}{
+		{name: "valid", input: "0104150000021126"},
+		{name: "checksum only", input: "0104150000021127", badCheckDigit: true},
+		{name: "content GTIN checksum only", input: "0001234567890123456702041500000211273720", badCheckDigit: true},
+		{name: "association only", input: "0204150000021126", badAssociation: true},
+		{name: "both errors", input: "0204150000021127", badAssociation: true, badCheckDigit: true},
+	}
+	for _, option := range options {
+		for _, input := range inputs {
+			t.Run(option.name+"/"+input.name, func(t *testing.T) {
+				args := append([]string{"parse"}, option.flags...)
+				args = append(args, input.input)
+				code, out, errOut := exec(t, "", args...)
+				wantError := ""
+				if option.strict && input.badAssociation {
+					wantError = "invalid AI association"
+				} else if option.checkDigits && input.badCheckDigit {
+					wantError = "invalid check digit"
+				}
+				if wantError == "" {
+					if code != 0 || out == "" || errOut != "" {
+						t.Errorf("exit %d, stdout %q, stderr %q, want parsed output", code, out, errOut)
+					}
+				} else if code != 1 || out != "" || !strings.Contains(errOut, wantError) {
+					t.Errorf("exit %d, stdout %q, stderr %q, want %q", code, out, errOut, wantError)
+				}
+			})
+		}
+	}
+}
+
+func TestParseCheckDigitStreamJSONContinues(t *testing.T) {
+	inputs := []string{"0104150000021126", "0104150000021127", "]E496385074"}
+	code, out, errOut := exec(t, strings.Join(inputs, "\n")+"\n", "parse", "-json", "-strict", "-check-digits")
+	if code != 1 || errOut != "" {
+		t.Errorf("exit %d, stderr %q, want exit 1 and inline JSON errors", code, errOut)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != len(inputs) {
+		t.Fatalf("JSON records = %d, want %d: %s", len(lines), len(inputs), out)
+	}
+	for i, line := range lines {
+		var got parseOutput
+		if err := json.Unmarshal([]byte(line), &got); err != nil {
+			t.Fatalf("record %d: invalid JSON: %v", i, err)
+		}
+		if got.Raw != inputs[i] {
+			t.Errorf("record %d: Raw = %q, want %q", i, got.Raw, inputs[i])
+		}
+		if i == 1 {
+			if !strings.Contains(got.Error, "invalid check digit") || len(got.Elements) != 0 {
+				t.Errorf("error record = %+v, want checksum error without elements", got)
+			}
+		} else if got.Error != "" || len(got.Elements) != 1 || got.Elements[0].AI != "01" {
+			t.Errorf("record %d = %+v, want one successful GTIN", i, got)
+		}
+	}
+}
+
 func TestParseValidateRegulator(t *testing.T) {
 	full := "0104150000021126172506302112345ABC\x1D10LOT42X"
 	if code, _, _ := exec(t, "", "parse", "-validate", "anvisa", full); code != 0 {

@@ -9,6 +9,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Opt-in GTIN check-digit validation for AI 01 and AI 02 through
+  `ParseOptions.ValidateCheckDigits`, CLI `-check-digits`, and WASM
+  `validateCheckDigits`, independently of association validation.
 - Typed `Barcode` accessors and matching CLI JSON, WebAssembly and TypeScript fields.
 - SSCC/GTIN identifier builders and check-digit validation helpers.
 - Identification AIs 253, 401, 8003, 8004, 8017 and 8018, with `GDTI()` and
@@ -28,6 +31,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- `Barcode.Validate()` now checks GTIN check digits for AI 01 and AI 02
+  after AI associations, using the current elements without reparsing raw
+  input. Association errors retain priority; existing strict parsing options
+  remain association-only and default parsing remains lenient.
 - Corrected strict AI association rules to match the GS1 Syntax Dictionary.
 
 ## [0.1.0] - 2026-09-22

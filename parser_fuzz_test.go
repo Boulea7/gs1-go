@@ -21,6 +21,10 @@ func FuzzParse(f *testing.F) {
 	f.Add("\x1D")
 	f.Add("9999999")
 	f.Add("01")
+	f.Add("0104150000021127")
+	f.Add("0204150000021127")
+	f.Add("]E000123458")
+	f.Add("]I20123456789012")
 
 	var reused Barcode
 
@@ -83,5 +87,34 @@ func FuzzParse(f *testing.F) {
 				t.Errorf("ParseInto element[%d] = %+v, Parse = %+v", i, reused.Elements[i], b.Elements[i])
 			}
 		}
+
+		assertCheckDigitParseReuse(t, input, &reused)
 	})
+}
+
+func assertCheckDigitParseReuse(t *testing.T, input string, reused *Barcode) {
+	t.Helper()
+	// Optional check-digit validation must agree across allocating and
+	// reusable parsing, including carrier normalization.
+	opts := ParseOptions{ValidateCheckDigits: true}
+	checked, checkErr := ParseWithOptions(input, opts)
+	reused.Reset()
+	intoErr := ParseIntoWithOptions(input, reused, opts)
+	if (checkErr == nil) != (intoErr == nil) {
+		t.Fatalf("check-digit parsing errors differ: ParseWithOptions %v, ParseIntoWithOptions %v", checkErr, intoErr)
+	}
+	if checkErr != nil {
+		if checkErr.Error() != intoErr.Error() {
+			t.Errorf("check-digit error context differs: %v != %v", checkErr, intoErr)
+		}
+		return
+	}
+	if len(checked.Elements) != len(reused.Elements) {
+		t.Fatalf("check-digit parsing element counts differ: %d != %d", len(checked.Elements), len(reused.Elements))
+	}
+	for i := range checked.Elements {
+		if checked.Elements[i] != reused.Elements[i] {
+			t.Errorf("check-digit element[%d] differs: %+v != %+v", i, checked.Elements[i], reused.Elements[i])
+		}
+	}
 }
