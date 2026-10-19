@@ -31,9 +31,11 @@
 // The detected AIM carrier is available as Barcode.Symbology; use
 // ParseWithOptions to opt in to ambiguous bare GTIN-8 input.
 //
-// Encode builds element strings for barcode generators, and Barcode.HRI
-// formats parsed elements for human-readable labels. Encode validates the
-// check digit of every numeric GS1 key it emits.
+// Encode builds element strings for barcode generators and EncodeZPL the
+// matching ^FD field data for Zebra printers; Barcode.HRI formats parsed
+// elements for human-readable labels. Both encoders enforce the AI
+// association rules and validate the check digit of every numeric GS1 key
+// they emit.
 //
 // # Validation
 //

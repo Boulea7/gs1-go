@@ -9,6 +9,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- `Encode` enforces AI association rules, so an element string it accepts
+  also parses with `ValidateAssociations`. `EncodeZPL` emits ZPL `^FD` field
+  data with `>8` FNC1 escapes and `ParseHRI` splits bracket notation
+  literally for encoder input. CLI `gs1 encode [-hri] [-zpl]` and WASM
+  `encode()` expose both, and golden tests cover the GS1 Logistics Label
+  Guideline and Syntax Engine example strings.
 - Check-digit validation for SSCC, GLN, GSIN and GSRN through
   `ValidateSSCC`, `ValidateGLN`, `ValidateGSIN`, `ValidateGSRN`, the generic
   `ComputeCheckDigit`, and `ValidateKey` with `KeyType` detection by length.
