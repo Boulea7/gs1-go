@@ -247,6 +247,29 @@ reaches `Encode` and fails as `ErrUnknownAI`.
 `EncodeZPL` writes every FNC1 as the Code 128 invocation code `>8` and a
 literal `>` as `><`, for the `^BC` command in automatic mode. GS1 DataMatrix
 (`^BX`) uses a different FNC1 escape and is not covered.
+### RFID tags (EPC)
+
+RFID reads land in the same `Barcode` shape as barcode scans. `ParseEPC`
+decodes the hexadecimal EPC memory content of a tag and `ParseEPCURI` a tag
+or pure-identity URI; `DecodeEPC` and `DecodeEPCURI` expose the identifier
+fields. Supported coding schemes are SGTIN-96 and SGTIN-198 ((01) with
+(21)), SSCC-96 ((00)), SGLN-96 and SGLN-195 ((414) with (254)), GRAI-96 and
+GRAI-170 ((8003)) and GIAI-96 and GIAI-202 ((8004)), with check digits
+computed and partition tables per the EPC Tag Data Standard.
+
+```go
+b, _ := gs1.ParseEPC("3074257BF7194E4000001A85")
+b.Symbology      // gs1.SymEPC
+b.GTIN()         // "80614141123458"
+b.SerialNumber() // "6789"
+
+epc, _ := gs1.DecodeEPCURI("urn:epc:tag:sscc-96:3.0614141.1234567890")
+epc.Scheme, epc.Bits, epc.Filter // sscc 96 3
+epc.URI()      // "urn:epc:id:sscc:0614141.1234567890"
+epc.Elements() // [{00 106141412345678908}]
+```
+
+Writing tags is out of scope.
 
 ### Association rules
 
@@ -363,6 +386,8 @@ cat scans.txt | gs1 parse -json                        # one JSON object per lin
 gs1 encode "(10)LOT42(01)04150000021126"               # raw string, FNC1 as ASCII GS
 gs1 encode -hri "(10)LOT42(01)04150000021126"          # (01)04150000021126(10)LOT42
 gs1 encode -zpl "(10)LOT42(01)04150000021126"          # >8010415000002112610LOT42
+gs1 epc 3074257BF7194E4000001A85                       # RFID tag to element string
+gs1 epc -json "urn:epc:tag:sscc-96:3.0614141.1234567890"
 gs1 gtin 04150000021126                                # GTIN check digit
 gs1 key 106141411234567897                             # valid SSCC or GSRN
 gs1 sscc -ext 3 -gcp 7801234 -serial 000000009         # 378012340000000095
@@ -386,6 +411,7 @@ The same parser runs in browsers, Electron and edge runtimes.
 make wasm   # produces wasm/gs1.wasm and a servable example under wasm/example/
 node wasm/check-digits.test.mjs  # optional Node runtime validation of that build
 node wasm/encode.test.mjs        # same, for encode()
+node wasm/epc.test.mjs           # same, for parseEPC()
 node wasm/keys.test.mjs          # same, for validateKey and key check digits
 node wasm/parity.test.mjs        # same, for measures, names, bare GTIN-8 and builders
 ```
@@ -414,6 +440,7 @@ node wasm/parity.test.mjs        # same, for measures, names, bare GTIN-8 and bu
   gs1.newSSCC("3", "7801234", "000000009");      // "378012340000000095"
   const gtin13 = gs1.newGTIN13("7801234", "00005");   // "7801234000056"
   if (typeof gtin13 === "string") gs1.newGTIN14("1", gtin13); // "17801234000053"
+  gs1.parseEPC("3074257BF7194E4000001A85");      // { gtin: "80614141123458", serial: "6789", epc: { scheme: "sgtin", bits: 96, filter: 3, ... } }
 
   gs1.validateGTIN("04150000021126");            // true
   gs1.validateKey("106141411234567897");         // { valid: true, keyTypes: ["SSCC", "GSRN"] }

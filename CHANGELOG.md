@@ -19,6 +19,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- EPC Tag Data Standard decoding: `ParseEPC` and `DecodeEPC` read the
+  hexadecimal memory content of SGTIN-96/198, SSCC-96, SGLN-96/195,
+  GRAI-96/170 and GIAI-96/202 tags, `ParseEPCURI` and `DecodeEPCURI` read
+  tag and pure-identity URIs, and both yield the equivalent element string
+  ((01)+(21), (00), (414)+(254), (8003), (8004)) with `Symbology` `SymEPC`.
+  CLI `gs1 epc` and WASM `parseEPC()` expose it with an `epc` object in the
+  JSON result.
 - Conformance suite against the GS1 Barcode Syntax Engine 1.4.1 and Syntax
   Dictionary 2026-01-27 test vectors, vendored under `testdata/gs1` with
   their licences: 1281 vectors run through the parser, 92% agree, and the

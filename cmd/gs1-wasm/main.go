@@ -33,6 +33,7 @@ type measureJSON struct {
 type parseResultJSON struct {
 	Raw               string        `json:"raw"`
 	Elements          []elementJSON `json:"elements"`
+	EPC               *epcJSON      `json:"epc,omitempty"`
 	GTIN              string        `json:"gtin"`
 	Lot               string        `json:"lot"`
 	Serial            string        `json:"serial"`
@@ -46,6 +47,17 @@ type parseResultJSON struct {
 	BestBeforeDate    string        `json:"bestBeforeDate,omitempty"`
 	Symbology         string        `json:"symbology"`
 	Warnings          []gs1.Warning `json:"warnings,omitempty"`
+}
+
+// epcJSON is the decoded EPC identifier attached to parseEPC results.
+type epcJSON struct {
+	Scheme        string `json:"scheme"`
+	Bits          int    `json:"bits,omitempty"`
+	Filter        *int   `json:"filter,omitempty"`
+	CompanyPrefix string `json:"companyPrefix"`
+	Reference     string `json:"reference"`
+	Serial        string `json:"serial,omitempty"`
+	URI           string `json:"uri"`
 }
 
 // dateAIs are the AI codes that contain YYMMDD dates.
@@ -134,6 +146,46 @@ func parse(_ js.Value, args []js.Value) any {
 		}
 	}
 
+	data, err := json.Marshal(result)
+	if err != nil {
+		return errorResult(err.Error())
+	}
+	return js.Global().Get("JSON").Call("parse", string(data))
+}
+
+// parseEPC decodes an RFID tag (hexadecimal EPC memory content, tag URI or
+// pure-identity URI) and returns the same result shape as parse with an
+// extra epc object, or {error}.
+func parseEPC(_ js.Value, args []js.Value) any {
+	if len(args) < 1 {
+		return errorResult("parseEPC requires 1 argument")
+	}
+	input := args[0].String()
+	var epc gs1.EPC
+	var err error
+	if strings.HasPrefix(strings.TrimSpace(input), "urn:") {
+		epc, err = gs1.DecodeEPCURI(input)
+	} else {
+		epc, err = gs1.DecodeEPC(input)
+	}
+	if err != nil {
+		return errorResult(err.Error())
+	}
+	b := gs1.Barcode{Raw: input, Symbology: gs1.SymEPC, Elements: epc.Elements()}
+	result := parseResultJSON{
+		Raw:       b.Raw,
+		Elements:  elementsJSON(b.Elements, false, gs1.DateOptions{}),
+		GTIN:      b.GTIN(),
+		Lot:       b.Lot(),
+		Serial:    b.SerialNumber(),
+		GLN:       b.GLN(),
+		Symbology: b.Symbology.String(),
+		EPC:       &epcJSON{Scheme: epc.Scheme.String(), Bits: epc.Bits, CompanyPrefix: epc.CompanyPrefix, Reference: epc.Reference, Serial: epc.Serial, URI: epc.URI()},
+	}
+	if epc.Filter >= 0 {
+		filter := epc.Filter
+		result.EPC.Filter = &filter
+	}
 	data, err := json.Marshal(result)
 	if err != nil {
 		return errorResult(err.Error())
@@ -382,6 +434,7 @@ func errorResult(msg string) any {
 func main() {
 	ns := js.Global().Get("Object").New()
 	ns.Set("parse", js.FuncOf(parse))
+	ns.Set("parseEPC", js.FuncOf(parseEPC))
 	ns.Set("encode", js.FuncOf(encode))
 	ns.Set("validateGTIN", js.FuncOf(validateGTIN))
 	ns.Set("validateKey", js.FuncOf(validateKey))

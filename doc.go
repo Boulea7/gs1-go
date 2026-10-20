@@ -37,6 +37,13 @@
 // association rules and validate the check digit of every numeric GS1 key
 // they emit.
 //
+// # RFID
+//
+// ParseEPC and ParseEPCURI decode EPC Tag Data Standard identifiers
+// (SGTIN, SSCC, SGLN, GRAI, GIAI) from tag memory or EPC URIs into the same
+// Barcode shape as barcode scans; DecodeEPC and DecodeEPCURI expose the
+// identifier fields.
+//
 // # Validation
 //
 // Parsing checks structure only. ValidateGTIN, ValidateSSCC, ValidateGLN,
