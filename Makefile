@@ -2,7 +2,7 @@ GO      ?= go
 PKG     := ./...
 FUZZTIME ?= 30s
 
-.PHONY: all test race cover lint vet fuzz bench wasm build clean npm-check tidy-check generate check-generate conformance
+.PHONY: all test race cover lint vet fuzz bench wasm build clean npm-check snapshot tidy-check generate check-generate conformance
 
 all: vet lint test
 
@@ -55,6 +55,12 @@ check-generate: generate
 wasm:
 	bash wasm/build.sh
 
+# snapshot runs the whole release pipeline locally without a tag: binaries,
+# archives, packages, PKGBUILD and cask into dist/, skipping publication,
+# container images and SBOMs (which need a registry login and syft).
+snapshot:
+	goreleaser release --snapshot --clean --skip=publish,docker,sbom
+
 # npm-check builds the WebAssembly bundle and verifies the npm package
 # loads through its own loader and ships exactly the published files.
 npm-check: wasm
@@ -63,4 +69,5 @@ npm-check: wasm
 	cd wasm && npm pack --dry-run --json | node pack-check.mjs
 
 clean:
+	rm -rf dist
 	rm -f gs1 coverage.out wasm/gs1.wasm wasm/wasm_exec.js wasm/LICENSE wasm/example/gs1.wasm wasm/example/wasm_exec.js
