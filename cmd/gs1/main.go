@@ -3,11 +3,13 @@
 //
 // Usage:
 //
-//	gs1 parse [-json] [-iso] [-strict] [-check-digits] [-validate REGULATOR] [BARCODE]
+//	gs1 parse [-json] [-iso] [-strict] [-check-digits] [-gtin8] [-validate REGULATOR] [BARCODE]
 //	gs1 encode [-hri] [-zpl] [ELEMENTS]
 //	gs1 gtin GTIN
 //	gs1 key KEY
 //	gs1 sscc -ext DIGIT -gcp PREFIX -serial REFERENCE
+//	gs1 gtin13 -gcp PREFIX -item REFERENCE
+//	gs1 gtin14 -indicator DIGIT GTIN13
 //	gs1 ai CODE
 //	gs1 version
 //
@@ -56,6 +58,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runKey(args[1:], stdout, stderr)
 	case "sscc":
 		return runSSCC(args[1:], stdout, stderr)
+	case "gtin13":
+		return runGTIN13(args[1:], stdout, stderr)
+	case "gtin14":
+		return runGTIN14(args[1:], stdout, stderr)
 	case "ai":
 		return runAI(args[1:], stdout, stderr)
 	case "version":
@@ -75,11 +81,13 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `gs1 - parse and validate GS1 barcode element strings
 
 Usage:
-  gs1 parse [-json] [-iso] [-strict] [-check-digits] [-validate REGULATOR] [BARCODE]
+  gs1 parse [-json] [-iso] [-strict] [-check-digits] [-gtin8] [-validate REGULATOR] [BARCODE]
   gs1 encode [-hri] [-zpl] [ELEMENTS]
   gs1 gtin GTIN
   gs1 key KEY
   gs1 sscc -ext DIGIT -gcp PREFIX -serial REFERENCE
+  gs1 gtin13 -gcp PREFIX -item REFERENCE
+  gs1 gtin14 -indicator DIGIT GTIN13
   gs1 ai CODE
   gs1 version
 
@@ -96,6 +104,8 @@ Commands:
   key      Validate the check digit of any numeric GS1 key (GTIN, SSCC, GLN,
            GSIN, GSRN) and report the key types its length admits.
   sscc     Build an 18-digit Serial Shipping Container Code.
+  gtin13   Build a GTIN-13 from a company prefix and an item reference.
+  gtin14   Build a case-level GTIN-14 from an indicator digit and a GTIN-13.
   ai       Show name and format of an Application Identifier.
   version  Print the build version.
 
@@ -138,6 +148,7 @@ type parseOptions struct {
 	iso         bool
 	strict      bool
 	checkDigits bool
+	gtin8       bool
 	validate    string
 	regulator   *gs1.Regulator
 }
@@ -157,6 +168,7 @@ func runParse(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs.BoolVar(&opts.iso, "iso", false, "render date AIs (11, 12, 13, 15, 17) as ISO 8601")
 	fs.BoolVar(&opts.strict, "strict", false, "validate AI association rules")
 	fs.BoolVar(&opts.checkDigits, "check-digits", false, "validate GS1 key check digits (GTIN, SSCC, GLN, GSIN, GSRN, GDTI, GRAI)")
+	fs.BoolVar(&opts.gtin8, "gtin8", false, "treat unprefixed eight-digit numeric input as a bare GTIN-8")
 	fs.StringVar(&opts.validate, "validate", "", "check required AIs for a regulator: anvisa, anmat, snfa, cofepris")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -225,6 +237,7 @@ func parseStream(stdin io.Reader, stdout, stderr io.Writer, opts parseOptions) i
 
 func parseOne(input string, b *gs1.Barcode, stdout, stderr io.Writer, opts parseOptions) error {
 	if err := gs1.ParseIntoWithOptions(input, b, gs1.ParseOptions{
+		AssumeBareGTIN8:      opts.gtin8,
 		ValidateAssociations: opts.strict,
 		ValidateCheckDigits:  opts.checkDigits,
 	}); err != nil {
@@ -496,6 +509,47 @@ func runSSCC(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	fmt.Fprintln(stdout, sscc)
+	return 0
+}
+
+func runGTIN13(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("gs1 gtin13", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	companyPrefix := fs.String("gcp", "", "GS1 company prefix")
+	itemReference := fs.String("item", "", "item reference")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() != 0 || *companyPrefix == "" || *itemReference == "" {
+		fmt.Fprintln(stderr, "usage: gs1 gtin13 -gcp PREFIX -item REFERENCE")
+		return 2
+	}
+	gtin, err := gs1.NewGTIN13(*companyPrefix, *itemReference)
+	if err != nil {
+		fmt.Fprintln(stderr, "gs1:", err)
+		return 1
+	}
+	fmt.Fprintln(stdout, gtin)
+	return 0
+}
+
+func runGTIN14(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("gs1 gtin14", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	indicator := fs.String("indicator", "", "packaging level indicator digit")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() != 1 || len(*indicator) != 1 {
+		fmt.Fprintln(stderr, "usage: gs1 gtin14 -indicator DIGIT GTIN13")
+		return 2
+	}
+	gtin, err := gs1.NewGTIN14((*indicator)[0], fs.Arg(0))
+	if err != nil {
+		fmt.Fprintln(stderr, "gs1:", err)
+		return 1
+	}
+	fmt.Fprintln(stdout, gtin)
 	return 0
 }
 

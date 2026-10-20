@@ -376,6 +376,7 @@ gs1 parse "0104150000021126172506302112345ABC"        # text table
 gs1 parse -json -iso "(01)04150000021126(17)250200"   # JSON, ISO dates
 gs1 parse -check-digits "0104150000021126"              # key check digits
 gs1 parse -strict -check-digits "0104150000021126"      # both semantic checks
+gs1 parse -gtin8 96385074                              # bare GTIN-8 instead of AI data
 gs1 parse -validate anvisa "$SCAN"                     # exit 1 if non-compliant
 cat scans.txt | gs1 parse -json                        # one JSON object per line
 gs1 encode "(10)LOT42(01)04150000021126"               # raw string, FNC1 as ASCII GS
@@ -383,6 +384,9 @@ gs1 encode -hri "(10)LOT42(01)04150000021126"          # (01)04150000021126(10)L
 gs1 encode -zpl "(10)LOT42(01)04150000021126"          # >8010415000002112610LOT42
 gs1 gtin 04150000021126                                # GTIN check digit
 gs1 key 106141411234567897                             # valid SSCC or GSRN
+gs1 sscc -ext 3 -gcp 7801234 -serial 000000009         # 378012340000000095
+gs1 gtin13 -gcp 7801234 -item 00005                    # 7801234000056
+gs1 gtin14 -indicator 1 7801234000056                  # 17801234000053
 gs1 ai 3102                                            # AI (3102)  Net Weight kg  N6
 ```
 
@@ -402,6 +406,7 @@ make wasm   # produces wasm/gs1.wasm and a servable example under wasm/example/
 node wasm/check-digits.test.mjs  # optional Node runtime validation of that build
 node wasm/encode.test.mjs        # same, for encode()
 node wasm/keys.test.mjs          # same, for validateKey and key check digits
+node wasm/parity.test.mjs        # same, for measures, names, bare GTIN-8 and builders
 ```
 
 ```html
@@ -415,10 +420,19 @@ node wasm/keys.test.mjs          # same, for validateKey and key check digits
   });
   r.gtin;            // "04150000021126"
   r.expirationDate;  // "2025-02-01"
+  r.elements[0];     // { ai: "01", name: "GTIN", value: "04150000021126" }
+  r.elements[1];     // { ai: "17", name: "Expiration Date", value: "250200", date: "2025-02-01" }
   r.warnings;         // parser advisories such as due-date-as-expiry
 
   gs1.encode([{ ai: "10", value: "LOT42" }, { ai: "01", value: "04150000021126" }]);
   // { raw: "\x1D010415000002112610LOT42", hri: "(01)04150000021126(10)LOT42", zpl: ">8010415000002112610LOT42" }
+
+  gs1.parse("3102001500").elements[0].measure;   // { raw: "001500", value: 15, scaled: 1500, decimals: 2, unit: "kg" }
+  gs1.parse("96385074", { assumeBareGTIN8: true }).gtin; // "00000096385074"
+
+  gs1.newSSCC("3", "7801234", "000000009");      // "378012340000000095"
+  const gtin13 = gs1.newGTIN13("7801234", "00005");   // "7801234000056"
+  if (typeof gtin13 === "string") gs1.newGTIN14("1", gtin13); // "17801234000053"
 
   gs1.validateGTIN("04150000021126");            // true
   gs1.validateKey("106141411234567897");         // { valid: true, keyTypes: ["SSCC", "GSRN"] }
@@ -430,7 +444,11 @@ TypeScript declarations live in [`wasm/gs1.d.ts`](wasm/gs1.d.ts). Design
 notes are in [ADR 0005](docs/adr/0005-webassembly-target.md).
 The WASM `strict` option validates AI associations only; `validateCheckDigits`
 independently checks the check digits of every numeric GS1 key and returns
-the usual `{ error: string }` object on failure. The optional Node test uses the matching `wasm_exec.js`
+the usual `{ error: string }` object on failure. `assumeBareGTIN8` mirrors
+`ParseOptions.AssumeBareGTIN8` and the CLI `-gtin8` flag. Each element carries
+the AI `name`, for measure AIs a `measure` object, and under `dateFormat: "iso"`
+a `date` field, all with the same shape as the CLI JSON output. The builders `newSSCC`, `newGTIN13` and `newGTIN14` return
+the key or an `{ error: string }` object. The optional Node test uses the matching `wasm_exec.js`
 copied by `make wasm`; Node is not required by `make all`.
 
 ## Scope

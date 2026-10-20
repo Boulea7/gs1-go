@@ -9,6 +9,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- CLI and WASM parity: WASM elements carry `name`, `measure` and the ISO
+  `date` like the CLI JSON output, `assumeBareGTIN8` in WASM and `-gtin8` in the CLI expose
+  `ParseOptions.AssumeBareGTIN8`, and the identifier builders reach both
+  entry points as `gs1 gtin13`, `gs1 gtin14`, `newSSCC`, `newGTIN13` and
+  `newGTIN14`.
 - `Encode` enforces AI association rules, so an element string it accepts
   also parses with `ValidateAssociations`. `EncodeZPL` emits ZPL `^FD` field
   data with `>8` FNC1 escapes and `ParseHRI` splits bracket notation
