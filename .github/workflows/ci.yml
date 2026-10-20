@@ -94,6 +94,25 @@ jobs:
       - run: GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o gs1.wasm ./cmd/gs1-wasm
       - run: ls -la gs1.wasm
 
+  npm-package:
+    name: npm package smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - run: make wasm
+      - run: cp LICENSE wasm/
+      - name: Loader resolves the binary next to itself
+        run: node wasm/package.test.mjs
+      - name: Package contains exactly the published files
+        run: cd wasm && npm pack --dry-run --json | node pack-check.mjs
+
+
   smoke-fuzz:
     name: Fuzz (smoke)
     runs-on: ubuntu-latest
