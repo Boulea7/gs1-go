@@ -7,6 +7,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- Apply check-digit validation to AI 03, the 13-digit GCN key in AI 255,
+  and the 14-digit GTIN prefix in AI 8006 and AI 8026. Strict parsing,
+  `Barcode.Validate` and encoding now reject incorrect check digits for
+  these AIs; serial and piece/total components remain outside the checksum.
+
 ### Changed
 
 - Strict association validation applies the complete dictionary rules, so
