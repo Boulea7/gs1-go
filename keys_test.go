@@ -186,6 +186,7 @@ func TestParseCheckDigitsForKeyAIs(t *testing.T) {
 		{name: "MTO GTIN (03)", valid: "0312345678901231", invalid: "0312345678901232"},
 		{name: "GCN (255)", valid: "2551234567890128", invalid: "2551234567890129"},
 		{name: "GCN (255) one-digit serial", valid: "25512345678901280", invalid: "25512345678901290"},
+		{name: "GCN (255) non-zero one-digit serial", valid: "25512345678901281", invalid: "25512345678901291"},
 		{name: "GCN (255) twelve-digit serial", valid: "2551234567890128123456789012", invalid: "2551234567890129123456789012"},
 		{name: "ITIP (8006)", valid: "8006123456789012310102", invalid: "8006123456789012320102"},
 		{name: "ITIP (8006) second piece", valid: "8006123456789012310202", invalid: "8006123456789012320202"},
